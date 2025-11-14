@@ -1,0 +1,16 @@
+{
+  "name": "nanasue-backend",
+  "version": "1.0.0",
+  "description": "Backend for Nana Sue contact form",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "vercel": "^32.3.0"
+  }
+}
