@@ -1,17 +1,21 @@
 // Use require for Node.js backend
 const nodemailer = require('nodemailer');
 const cors = require('cors');
+require('dotenv').config({ path: '.env.local' });
+const { json } = require('micro'); // <-- FIX 1: Import the JSON parser
 
 // Initialize the CORS middleware
-// IMPORTANT: Update 'YOUR_WEBSITE_URL' to your live site
+// ... (Your allowedOrigins list is fine) ...
 const allowedOrigins = [
     'https://sashamolle.github.io', // Your GitHub Pages URL
-    'http://127.0.0.1:5500' // For local testing
+    'http://127.0.0.1:5500', // For local testing
+    'http://localhost:5500',
+    'http://127.0.0.1:5501',
+    'null'
 ];
 
 const corsHandler = cors({
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
         if (allowedOrigins.indexOf(origin) === -1) {
             const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
@@ -24,9 +28,14 @@ const corsHandler = cors({
 // This is the main function Vercel will run
 export default async function handler(req, res) {
     // Run the CORS middleware
-    // We use a helper function to wrap middleware for Vercel
     await runMiddleware(req, res, corsHandler);
 
+    // --- FIX 2: Handle the browser's "preflight" OPTIONS request ---
+    // This stops a confusing error *before* the POST request
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
     // Only allow POST requests
     if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
@@ -34,14 +43,23 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { name, _replyto, interest, message } = req.body;
+        // --- FIX 3: Manually parse the JSON body ---
+        // This reads the data your frontend is sending
+        const body = await json(req);
+
+        // Now, we get the data from `body`, NOT `req.body`
+        const { name, _replyto, interest, message } = body;
 
         // --- IMPORTANT: Email Configuration ---
-        // You MUST set these as Environment Variables in Vercel
-        // NEVER write your password directly in the code.
         const emailUser = process.env.EMAIL_USER;
         const emailPass = process.env.EMAIL_PASS;
-        const emailTo = process.env.EMAIL_TO; // This will be "sue@whattodobynanasue.com"
+        const emailTo = process.env.EMAIL_TO;
+
+        // Your console logs will now work!
+        console.log("Received name:", name);
+        console.log("Received message:", message);
+        console.log("Received interest:", interest);
+        console.log("Received replyTo:", _replyto);
 
         if (!emailUser || !emailPass || !emailTo) {
             console.error('Missing environment variables for email');
@@ -49,20 +67,17 @@ export default async function handler(req, res) {
         }
         
         // 1. Create a "transporter"
-        // This example uses Gmail. You can use other services.
-        // If using Gmail, you MUST create an "App Password"
-        // See: https://support.google.com/accounts/answer/185833
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
-                user: emailUser, // Your "sending" email (e.g., nanasue.website@gmail.com)
-                pass: emailPass, // Your 16-character "App Password"
+                user: emailUser,
+                pass: emailPass,
             },
         });
 
-        // 2. Define the email options
+        // 2. Define the email options (for Nana Sue)
         const mailOptions = {
-            from: `"${name}" <${_replyto}>`, // Sender's name and email
+            from: `"${name}" <${emailUser}>`, // Use your "robot" email as the sender
             to: emailTo, // Nana Sue's email
             replyTo: _replyto, // The user's email
             subject: `New Message from ${name} via Website (${interest})`,
@@ -79,11 +94,30 @@ export default async function handler(req, res) {
             `,
         };
 
-        // 3. Send the email
+        // 3. Send the email to Nana Sue
         await transporter.sendMail(mailOptions);
 
-        // 4. Send a success response
-        // This is what the JavaScript on your contact.html page is waiting for
+        // --- 4. NEW: Define the auto-responder email (for the user) ---
+        const autoResponderOptions = {
+            from: `"Dr. Sue Weber (Nana Sue)" <${emailTo}>`, // From Nana Sue
+            to: _replyto, // Send to the user who submitted the form
+            subject: "Thanks for your message!",
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+                    <h3>Hi ${name},</h3>
+                    <p>Thanks for getting in touch! Your message has been received, and I'll get back to you as soon as possible.</p>
+                    <br>
+                    <p>Warmly,</p>
+                    <p>Dr. Sue (Nana Sue)</p>
+                    <p><em>What To Do by Nana Sue</em></p>
+                </div>
+            `
+        };
+
+        // --- 5. NEW: Send the auto-responder email ---
+        await transporter.sendMail(autoResponderOptions);
+
+        // 6. Send a success response
         res.status(200).json({ message: 'Message sent successfully!' });
 
     } catch (error) {
