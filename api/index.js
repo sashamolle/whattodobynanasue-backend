@@ -55,12 +55,6 @@ export default async function handler(req, res) {
         const emailPass = process.env.EMAIL_PASS;
         const emailTo = process.env.EMAIL_TO;
 
-        // Your console logs will now work!
-        console.log("Received name:", name);
-        console.log("Received message:", message);
-        console.log("Received interest:", interest);
-        console.log("Received replyTo:", _replyto);
-
         if (!emailUser || !emailPass || !emailTo) {
             console.error('Missing environment variables for email');
             return res.status(500).json({ error: 'Server configuration error.' });
